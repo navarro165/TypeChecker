@@ -1,117 +1,279 @@
 #include <iostream>
-#include <istream>
 #include <vector>
 #include <string>
 #include <cctype>
 #include <map>
+#include <set>
 
 #include "lexer.h"
 #include "inputbuf.h"
 
-#define KEYWORDS_COUNT 2
-#define DEBUG false
-
 using namespace std;
 
-string reserved[] = { "END_OF_FILE",
-    "PUBLIC", "PRIVATE",
-    "EQUAL", "COLON", "COMMA", "SEMICOLON",
-    "LBRACE", "RBRACE", "ID", "ERROR"
-};
+string reserved[] = {
+    "END_OF_FILE",
+    "INT", "REAL", "BOOL", "TRUE", "FALSE",
+    "IF", "WHILE", "SWITCH", "CASE",
+    "NOT", "PLUS", "MINUS", "MULT", "DIV",
+    "GREATER", "LESS", "GTEQ", "LTEQ", "EQUAL", "NOTEQUAL",
+    "LPAREN", "RPAREN",
+    "NUM", "REALNUM",
+    "COLON", "COMMA", "SEMICOLON",
+    "LBRACE", "RBRACE",
+    "ID", "ERROR"};
 
-string keyword[] = { "public", "private" };
+string keyword[] = {
+    "int", "real", "bool", "true", "false",
+    "if", "while", "switch", "case"};
 
-void Debug(char c, string lexeme){
-    if (DEBUG){
-        cout << "char: " << c << " , lexeme: " << lexeme << endl;
-    }
-}
+TokenType keywordTokens[] = {
+    INT, REAL, BOOL, TRUE, FALSE,
+    IF, WHILE, SWITCH, CASE};
 
-void Token::Print(){
+void Token::Print()
+{
     cout << "{" << this->lexeme << " , "
          << reserved[(int)this->token_type] << " , "
          << this->line_no << "}\n";
 }
 
-LexicalAnalyzer::LexicalAnalyzer(){
+LexicalAnalyzer::LexicalAnalyzer()
+{
     this->line_no = 1;
     tmp.lexeme = "";
     tmp.line_no = 1;
     tmp.token_type = ERROR;
 }
 
-bool LexicalAnalyzer::SkipSpace(){
+bool LexicalAnalyzer::SkipSpace()
+{
     char c;
     bool space_encountered = false;
 
     input.GetChar(c);
-    while (!input.EndOfInput() && isspace(c)) {
+    while (!input.EndOfInput() && isspace(c))
+    {
         space_encountered = true;
-        if (c == '\n') {
+        if (c == '\n')
+        {
             line_no++;
         }
         input.GetChar(c);
     }
 
-    if (!input.EndOfInput()) {
+    if (!input.EndOfInput())
+    {
         input.UngetChar(c);
     }
     return space_encountered;
 }
 
-bool LexicalAnalyzer::SkipComments() {
-    char c;
-    input.GetChar(c);
-    if (c == '/') {
-        input.GetChar(c);
-        if (c == '/') {
-            while (c != '\n' && !input.EndOfInput()) {
-                input.GetChar(c);
-            }
-            if (c == '\n') {
-                line_no++;
-            }
-            return true;
-        } else {
-            input.UngetChar(c);
-            input.UngetChar('/');
-            return false;
-        }
-    } else {
-        input.UngetChar(c);
-        return false;
-    }
-}
-
-bool LexicalAnalyzer::IsKeyword(string s) {
-    for (int i = 0; i < KEYWORDS_COUNT; i++) {
-        if (s == keyword[i]) {
+bool LexicalAnalyzer::IsKeyword(string s)
+{
+    for (int i = 0; i < 9; i++)
+    {
+        if (s == keyword[i])
+        {
             return true;
         }
     }
     return false;
 }
 
-TokenType LexicalAnalyzer::FindKeywordIndex(string s) {
-    for (int i = 0; i < KEYWORDS_COUNT; i++) {
-        if (s == keyword[i]) {
-            return (TokenType)(i + 1);
+TokenType LexicalAnalyzer::FindKeywordIndex(string s)
+{
+    for (int i = 0; i < 9; i++)
+    {
+        if (s == keyword[i])
+        {
+            return keywordTokens[i];
         }
     }
     return ID;
 }
 
-Token LexicalAnalyzer::ScanIdOrKeyword(){
+Token LexicalAnalyzer::ScanNumber()
+{
     char c;
     input.GetChar(c);
 
-    if (isalpha(c)) {
+    if (isdigit(c))
+    {
+        if (c == '0')
+        {
+            tmp.lexeme = "0";
+            tmp.token_type = NUM;
+            tmp.line_no = line_no;
+
+            input.GetChar(c);
+            if (c == '.')
+            {
+                tmp.lexeme += c;
+                input.GetChar(c);
+                if (isdigit(c))
+                {
+                    tmp.lexeme += c;
+                    while (true)
+                    {
+                        input.GetChar(c);
+                        if (isdigit(c))
+                        {
+                            tmp.lexeme += c;
+                        }
+                        else
+                        {
+                            if (c == '\n')
+                            {
+                                line_no++;
+                            }
+                            if (!input.EndOfInput())
+                            {
+                                input.UngetChar(c);
+                            }
+                            break;
+                        }
+                    }
+                    tmp.token_type = REALNUM;
+                    tmp.line_no = line_no;
+                }
+                else
+                {
+                    // expects digit after dot
+                    if (!input.EndOfInput())
+                    {
+                        input.UngetChar(c);
+                    }
+                    tmp.token_type = ERROR;
+                    tmp.line_no = line_no;
+                }
+            }
+            else
+            {
+                if (!input.EndOfInput())
+                {
+                    input.UngetChar(c);
+                }
+            }
+            return tmp;
+        }
+        else
+        {
+            tmp.lexeme = "";
+            tmp.lexeme += c;
+            bool is_real = false;
+
+            while (true)
+            {
+                input.GetChar(c);
+                if (isdigit(c))
+                {
+                    tmp.lexeme += c;
+                }
+                else if (c == '.')
+                {
+                    if (is_real)
+                    {
+                        // means there are 2 dots in number
+                        tmp.token_type = ERROR;
+                        tmp.line_no = line_no;
+                        return tmp;
+                    }
+                    else
+                    {
+                        is_real = true;
+                        tmp.lexeme += c;
+                        input.GetChar(c);
+                        if (isdigit(c))
+                        {
+                            tmp.lexeme += c;
+                            while (true)
+                            {
+                                input.GetChar(c);
+                                if (isdigit(c))
+                                {
+                                    tmp.lexeme += c;
+                                }
+                                else
+                                {
+                                    if (c == '\n')
+                                    {
+                                        line_no++;
+                                    }
+                                    if (!input.EndOfInput())
+                                    {
+                                        input.UngetChar(c);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // expects digit after dot
+                            if (c == '\n')
+                            {
+                                line_no++;
+                            }
+                            if (!input.EndOfInput())
+                            {
+                                input.UngetChar(c);
+                            }
+                            tmp.token_type = ERROR;
+                            tmp.line_no = line_no;
+                            return tmp;
+                        }
+                    }
+                }
+                else
+                {
+                    if (c == '\n')
+                    {
+                        line_no++;
+                    }
+                    if (!input.EndOfInput())
+                    {
+                        input.UngetChar(c);
+                    }
+                    break;
+                }
+            }
+
+            tmp.token_type = is_real ? REALNUM : NUM;
+            tmp.line_no = line_no;
+            return tmp;
+        }
+    }
+    else
+    {
+        if (!input.EndOfInput())
+        {
+            input.UngetChar(c);
+        }
+        tmp.token_type = ERROR;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+}
+
+Token LexicalAnalyzer::ScanIdOrKeyword()
+{
+    char c;
+    input.GetChar(c);
+
+    if (isalpha(c))
+    {
         tmp.lexeme = "";
-        while (!input.EndOfInput() && isalnum(c)) {
+        while (!input.EndOfInput() && isalnum(c))
+        {
             tmp.lexeme += c;
             input.GetChar(c);
         }
-        if (!input.EndOfInput()) {
+        if (c == '\n')
+        {
+            line_no++;
+        }
+        if (!input.EndOfInput())
+        {
             input.UngetChar(c);
         }
         tmp.line_no = line_no;
@@ -119,379 +281,785 @@ Token LexicalAnalyzer::ScanIdOrKeyword(){
             tmp.token_type = FindKeywordIndex(tmp.lexeme);
         else
             tmp.token_type = ID;
-    } else {
-        if (!input.EndOfInput()) {
+        return tmp;
+    }
+    else
+    {
+        if (c == '\n')
+        {
+            line_no++;
+        }
+        if (!input.EndOfInput())
+        {
             input.UngetChar(c);
         }
         tmp.lexeme = "";
         tmp.token_type = ERROR;
-    }
-    return tmp;
-}
-
-TokenType LexicalAnalyzer::UngetToken(Token tok){
-    tokens.push_back(tok);
-    return tok.token_type;
-}
-
-Token LexicalAnalyzer::GetToken(){
-    char c;
-
-    if (!tokens.empty()) {
-        tmp = tokens.back();
-        tokens.pop_back();
+        tmp.line_no = line_no;
         return tmp;
     }
+}
 
+Token LexicalAnalyzer::GetToken()
+{
+    char c;
     SkipSpace();
-    while (SkipComments()) {
-        SkipSpace();
-    }
 
     tmp.lexeme = "";
     tmp.line_no = line_no;
     input.GetChar(c);
-    switch (c) {
-        case '=':
-            tmp.token_type = EQUAL;
-            return tmp;
-        case ':':
-            tmp.token_type = COLON;
-            return tmp;
-        case ',':
-            tmp.token_type = COMMA;
-            return tmp;
-        case ';':
-            tmp.token_type = SEMICOLON;
-            return tmp;
-        case '{':
-            tmp.token_type = LBRACE;
-            return tmp;
-        case '}':
-            tmp.token_type = RBRACE;
-            return tmp;
-        default:
-            if (isalpha(c)) {
-                input.UngetChar(c);
-                return ScanIdOrKeyword();
-            } else if (input.EndOfInput()) {
-                tmp.token_type = END_OF_FILE;
-            } else {
-                tmp.token_type = ERROR;
+
+    if (c == '\n')
+    {
+        line_no++;
+    }
+
+    if (isdigit(c))
+    {
+        input.UngetChar(c);
+        return ScanNumber();
+    }
+    else if (isalpha(c))
+    {
+        input.UngetChar(c);
+        return ScanIdOrKeyword();
+    }
+    else if (c == '>')
+    {
+        char c2;
+        input.GetChar(c2);
+        if (c2 == '=')
+        {
+            tmp.lexeme = ">=";
+            tmp.token_type = GTEQ;
+        }
+        else
+        {
+            if (c2 == '\n')
+            {
+                line_no++;
             }
-            return tmp;
+            if (!input.EndOfInput())
+            {
+                input.UngetChar(c2);
+            }
+            tmp.lexeme = ">";
+            tmp.token_type = GREATER;
+        }
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '<')
+    {
+        char c2;
+        input.GetChar(c2);
+        if (c2 == '=')
+        {
+            tmp.lexeme = "<=";
+            tmp.token_type = LTEQ;
+        }
+        else if (c2 == '>')
+        {
+            tmp.lexeme = "<>";
+            tmp.token_type = NOTEQUAL;
+        }
+        else
+        {
+            if (c2 == '\n')
+            {
+                line_no++;
+            }
+            if (!input.EndOfInput())
+            {
+                input.UngetChar(c2);
+            }
+            tmp.lexeme = "<";
+            tmp.token_type = LESS;
+        }
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '=')
+    {
+        tmp.lexeme = "=";
+        tmp.token_type = EQUAL;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == ':')
+    {
+        tmp.lexeme = ":";
+        tmp.token_type = COLON;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == ',')
+    {
+        tmp.lexeme = ",";
+        tmp.token_type = COMMA;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == ';')
+    {
+        tmp.lexeme = ";";
+        tmp.token_type = SEMICOLON;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '{')
+    {
+        tmp.lexeme = "{";
+        tmp.token_type = LBRACE;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '}')
+    {
+        tmp.lexeme = "}";
+        tmp.token_type = RBRACE;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '(')
+    {
+        tmp.lexeme = "(";
+        tmp.token_type = LPAREN;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == ')')
+    {
+        tmp.lexeme = ")";
+        tmp.token_type = RPAREN;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '+')
+    {
+        tmp.lexeme = "+";
+        tmp.token_type = PLUS;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '-')
+    {
+        tmp.lexeme = "-";
+        tmp.token_type = MINUS;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '*')
+    {
+        tmp.lexeme = "*";
+        tmp.token_type = MULT;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '/')
+    {
+        tmp.lexeme = "/";
+        tmp.token_type = DIV;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == '!')
+    {
+        tmp.lexeme = "!";
+        tmp.token_type = NOT;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else if (c == EOF || input.EndOfInput())
+    {
+        tmp.token_type = END_OF_FILE;
+        tmp.line_no = line_no;
+        return tmp;
+    }
+    else
+    {
+        if (c == '\n')
+        {
+            line_no++;
+        }
+        tmp.lexeme = c;
+        tmp.token_type = ERROR;
+        tmp.line_no = line_no;
+        return tmp;
     }
 }
 
-struct VariableInfo {
-    string name;
-    string scope;
-    string access_type; // if public or private
+// new parser and type checker logic
+// *********************************
+
+enum SimpleType
+{
+    TYPE_INT,
+    TYPE_REAL,
+    TYPE_BOOL,
+    TYPE_UNKNOWN
 };
 
-LexicalAnalyzer lexer;
-Token token;
+struct TypeInfo
+{
+    SimpleType type;
+    set<string> equalVars;
+};
 
-vector<VariableInfo> symbolTable;
-vector<string> scopeStack;
-vector<string> assignments;
+map<string, TypeInfo> symbolTable;
+vector<string> varOrder;
 
-void ParseProgram();
-void ParseGlobalVariables();
-bool ParseVarDeclList(string access_type);
-bool ParseVariableList(string access_type);
-void ParseScopeList();
-void ParseScope();
-void ParseScopeContent();
-void ParseVisibilitySections();
-void ParseVisibilitySection();
-bool ParseVariableListWithVisibility(string access_type);
-void ParseAssignmentList();
-void ParseAssignment();
-string ResolveVariable(string variableName);
+class Parser
+{
+public:
+    void ParseProgram();
 
-void ParseProgram() {
-    ParseGlobalVariables();
-    ParseScopeList();
+private:
+    LexicalAnalyzer lexer;
+    Token token;
+    bool typeError = false;
+    int error_line_no;
+    string error_constraint;
+
+    // parser helpers
+    void ParseGlobalVars();
+    void ParseVarDeclList();
+    void ParseVarDecl();
+    void ParseVarList(vector<string> &varNames);
+    void ParseTypeName(SimpleType &varType);
+    void ParseBody();
+    void ParseStmtList();
+    void ParseStmt();
+    void ParseAssignmentStmt();
+    void ParseIfStmt();
+    void ParseWhileStmt();
+    void ParseSwitchStmt();
+    void ParseCaseList();
+    void ParseCase();
+    SimpleType ParseExpression(string &varName, int &expr_line_no);
+    SimpleType ParsePrimary(string &varName, int &primary_line_no);
+
+    void EnforceType(SimpleType leftType, SimpleType rightType, int line_no, string constraint, string leftVar, string rightVar);
+
+    // for type checking
+    void EnforceType(SimpleType leftType, SimpleType rightType, int line_no, string constraint);
+    void UnifyTypes(string var1, string var2);
+    void UpdateType(string varName, SimpleType type);
+
+    // more helpers
+    void SyntaxError();
+    void Expect(TokenType expected);
+    void ReportTypeError(int line_no, string constraint);
+};
+
+void Parser::SyntaxError()
+{
+    cout << "Syntax Error" << endl;
+    exit(1);
+}
+
+void Parser::Expect(TokenType expected)
+{
+    if (token.token_type != expected)
+    {
+        SyntaxError();
+    }
     token = lexer.GetToken();
-    if (token.token_type != END_OF_FILE) {
-        cout << "Syntax Error" << endl;
-        exit(1);
+}
+
+void Parser::ReportTypeError(int line_no, string constraint)
+{
+    if (!typeError)
+    {
+        typeError = true;
+        error_line_no = line_no;
+        error_constraint = constraint;
     }
 }
 
-void ParseGlobalVariables() {
-    Token firstToken = lexer.GetToken();
-    Token secondToken = lexer.GetToken();
-    lexer.UngetToken(secondToken);
-    lexer.UngetToken(firstToken);
-
-    if (firstToken.token_type == ID && (secondToken.token_type == COMMA || secondToken.token_type == SEMICOLON)) {
-        if (!ParseVarDeclList("public")) {
-            // continue, no glob vars
-        }
+void Parser::ParseProgram()
+{
+    token = lexer.GetToken();
+    ParseGlobalVars();
+    ParseBody();
+    if (token.token_type != END_OF_FILE)
+    {
+        SyntaxError();
     }
-    // parse scopes
-}
 
-
-bool ParseVarDeclList(string access_type) {
-    Token firstToken = lexer.GetToken();
-    if (firstToken.token_type == ID) {
-        Token secondToken = lexer.GetToken();
-        if (secondToken.token_type == COMMA || secondToken.token_type == SEMICOLON) {
-            lexer.UngetToken(secondToken);
-            lexer.UngetToken(firstToken);
-            if (ParseVariableList(access_type)) {
-                token = lexer.GetToken();
-                if (token.token_type != SEMICOLON) {
-                    cout << "Syntax Error" << endl;
-                    exit(1);
+    if (typeError)
+    {
+        cout << "TYPE MISMATCH " << error_line_no << " " << error_constraint << endl;
+    }
+    else
+    {
+        // output variable types
+        set<string> printed;
+        for (string varName : varOrder)
+        {
+            if (printed.find(varName) == printed.end())
+            {
+                TypeInfo &info = symbolTable[varName];
+                if (info.type == TYPE_INT)
+                {
+                    cout << varName << ": int #" << endl;
+                    printed.insert(varName);
                 }
-                return true;
-            } else {
-                return false;
+                else if (info.type == TYPE_REAL)
+                {
+                    cout << varName << ": real #" << endl;
+                    printed.insert(varName);
+                }
+                else if (info.type == TYPE_BOOL)
+                {
+                    cout << varName << ": bool #" << endl;
+                    printed.insert(varName);
+                }
+                else
+                {
+                    // group by type
+                    vector<string> vars;
+                    for (string v : info.equalVars)
+                    {
+                        if (printed.find(v) == printed.end())
+                        {
+                            vars.push_back(v);
+                            printed.insert(v);
+                        }
+                    }
+                    for (size_t i = 0; i < vars.size(); ++i)
+                    {
+                        cout << vars[i];
+                        if (i != vars.size() - 1)
+                        {
+                            cout << ", ";
+                        }
+                    }
+                    cout << ": ? #" << endl;
+                }
             }
-        } else {
-            // not a variable
-            lexer.UngetToken(secondToken);
-            lexer.UngetToken(firstToken);
-            return false;
-        }
-    } else {
-        lexer.UngetToken(firstToken);
-        return false;
-    }
-}
-
-
-bool ParseVariableList(string access_type) {
-    token = lexer.GetToken();
-    if (token.token_type == ID) {
-        // add to symbol table
-        VariableInfo variableInfo;
-        variableInfo.name = token.lexeme;
-        variableInfo.scope = (scopeStack.empty() ? "::" : scopeStack.back());
-        variableInfo.access_type = access_type;
-        symbolTable.push_back(variableInfo);
-        token = lexer.GetToken();
-
-        if (token.token_type == COMMA) {
-            return ParseVariableList(access_type);
-        } else {
-            lexer.UngetToken(token);
-            return true;
-        }
-    } else {
-        lexer.UngetToken(token);
-        return false;
-    }
-}
-
-void ParseScopeList() {
-    while (true) {
-        token = lexer.GetToken();
-        if (token.token_type == ID) {
-            Token nextToken = lexer.GetToken();
-            if (nextToken.token_type == LBRACE) {
-                lexer.UngetToken(nextToken);
-                lexer.UngetToken(token);
-                ParseScope();
-            } else {
-                lexer.UngetToken(nextToken);
-                lexer.UngetToken(token);
-                break; // not a scope
-            }
-        } else {
-            lexer.UngetToken(token);
-            break; // out of scopes
         }
     }
 }
 
-void ParseScope() {
-    token = lexer.GetToken();
-    if (token.token_type == ID) {
-        string scopeName = token.lexeme;
-        scopeStack.push_back(scopeName);
+void Parser::ParseGlobalVars()
+{
+    if (token.token_type == ID)
+    {
+        ParseVarDeclList();
+    }
+}
+
+void Parser::ParseVarDeclList()
+{
+    ParseVarDecl();
+    if (token.token_type == ID)
+    {
+        ParseVarDeclList();
+    }
+}
+
+void Parser::ParseVarDecl()
+{
+    vector<string> varNames;
+    ParseVarList(varNames);
+    Expect(COLON);
+    SimpleType varType;
+    ParseTypeName(varType);
+    Expect(SEMICOLON);
+
+    // add to symbol table
+    for (string varName : varNames)
+    {
+        symbolTable[varName].type = varType;
+        symbolTable[varName].equalVars.insert(varName);
+        varOrder.push_back(varName);
+    }
+}
+
+void Parser::ParseVarList(vector<string> &varNames)
+{
+    if (token.token_type == ID)
+    {
+        varNames.push_back(token.lexeme);
         token = lexer.GetToken();
-        if (token.token_type == LBRACE) {
-            ParseScopeContent();
+        if (token.token_type == COMMA)
+        {
             token = lexer.GetToken();
-            if (token.token_type != RBRACE) {
-                cout << "Syntax Error" << endl;
-                exit(1);
+            ParseVarList(varNames);
+        }
+    }
+    else
+    {
+        SyntaxError();
+    }
+}
+
+void Parser::ParseTypeName(SimpleType &varType)
+{
+    if (token.token_type == INT)
+    {
+        varType = TYPE_INT;
+    }
+    else if (token.token_type == REAL)
+    {
+        varType = TYPE_REAL;
+    }
+    else if (token.token_type == BOOL)
+    {
+        varType = TYPE_BOOL;
+    }
+    else
+    {
+        SyntaxError();
+    }
+    token = lexer.GetToken();
+}
+
+void Parser::ParseBody()
+{
+    Expect(LBRACE);
+    ParseStmtList();
+    Expect(RBRACE);
+}
+
+void Parser::ParseStmtList()
+{
+    ParseStmt();
+    if (token.token_type == ID || token.token_type == IF || token.token_type == WHILE || token.token_type == SWITCH)
+    {
+        ParseStmtList();
+    }
+}
+
+void Parser::ParseStmt()
+{
+    if (token.token_type == ID)
+    {
+        ParseAssignmentStmt();
+    }
+    else if (token.token_type == IF)
+    {
+        ParseIfStmt();
+    }
+    else if (token.token_type == WHILE)
+    {
+        ParseWhileStmt();
+    }
+    else if (token.token_type == SWITCH)
+    {
+        ParseSwitchStmt();
+    }
+    else
+    {
+        SyntaxError();
+    }
+}
+
+void Parser::ParseAssignmentStmt()
+{
+    if (token.token_type == ID)
+    {
+        string lhsVar = token.lexeme;
+        if (symbolTable.find(lhsVar) == symbolTable.end())
+        {
+            symbolTable[lhsVar].type = TYPE_UNKNOWN;
+            symbolTable[lhsVar].equalVars.insert(lhsVar);
+            varOrder.push_back(lhsVar);
+        }
+        token = lexer.GetToken();
+        Expect(EQUAL);
+        string exprVar;
+        int expr_line_no;
+        SimpleType exprType = ParseExpression(exprVar, expr_line_no);
+        Expect(SEMICOLON);
+
+        // C1
+        SimpleType lhsType = symbolTable[lhsVar].type;
+        EnforceType(lhsType, exprType, expr_line_no, "C1", lhsVar, exprVar);
+        UnifyTypes(lhsVar, exprVar);
+    }
+    else
+    {
+        SyntaxError();
+    }
+}
+
+void Parser::ParseIfStmt()
+{
+    Expect(IF);
+    Expect(LPAREN);
+    string exprVar;
+    int expr_line_no;
+    SimpleType exprType = ParseExpression(exprVar, expr_line_no);
+    Expect(RPAREN);
+
+    // C4
+    if (exprType != TYPE_BOOL && exprType != TYPE_UNKNOWN)
+    {
+        ReportTypeError(expr_line_no, "C4");
+    }
+    else if (exprType == TYPE_UNKNOWN && !exprVar.empty())
+    {
+        UpdateType(exprVar, TYPE_BOOL);
+    }
+
+    ParseBody();
+}
+
+void Parser::ParseWhileStmt()
+{
+    Expect(WHILE);
+    Expect(LPAREN);
+    string exprVar;
+    int expr_line_no;
+    SimpleType exprType = ParseExpression(exprVar, expr_line_no);
+    Expect(RPAREN);
+
+    // C4
+    if (exprType != TYPE_BOOL)
+    {
+        ReportTypeError(expr_line_no, "C4");
+    }
+
+    ParseBody();
+}
+
+void Parser::ParseSwitchStmt()
+{
+    Expect(SWITCH);
+    Expect(LPAREN);
+    string exprVar;
+    int expr_line_no;
+    SimpleType exprType = ParseExpression(exprVar, expr_line_no);
+    Expect(RPAREN);
+
+    // C5
+    if (exprType != TYPE_INT && exprType != TYPE_UNKNOWN)
+    {
+        ReportTypeError(expr_line_no, "C5");
+    }
+    else if (exprType == TYPE_UNKNOWN && !exprVar.empty())
+    {
+        UpdateType(exprVar, TYPE_INT);
+    }
+
+    Expect(LBRACE);
+    ParseCaseList();
+    Expect(RBRACE);
+}
+
+void Parser::ParseCaseList()
+{
+    ParseCase();
+    if (token.token_type == CASE)
+    {
+        ParseCaseList();
+    }
+}
+
+void Parser::ParseCase()
+{
+    Expect(CASE);
+    Expect(NUM);
+    Expect(COLON);
+    ParseBody();
+}
+
+SimpleType Parser::ParseExpression(string &varName, int &expr_line_no)
+{
+    expr_line_no = token.line_no;
+    if (token.token_type == ID || token.token_type == NUM || token.token_type == REALNUM ||
+        token.token_type == TRUE || token.token_type == FALSE)
+    {
+        return ParsePrimary(varName, expr_line_no);
+    }
+    else if (token.token_type == PLUS || token.token_type == MINUS ||
+             token.token_type == MULT || token.token_type == DIV ||
+             token.token_type == GREATER || token.token_type == LESS ||
+             token.token_type == GTEQ || token.token_type == LTEQ ||
+             token.token_type == EQUAL || token.token_type == NOTEQUAL)
+    {
+        TokenType op = token.token_type;
+        int op_line_no = token.line_no;
+        token = lexer.GetToken();
+        string leftVar, rightVar;
+        int left_line_no, right_line_no;
+        SimpleType leftType = ParseExpression(leftVar, left_line_no);
+        SimpleType rightType = ParseExpression(rightVar, right_line_no);
+
+        // C2
+        EnforceType(leftType, rightType, op_line_no, "C2", leftVar, rightVar);
+
+        if (!leftVar.empty() && !rightVar.empty())
+        {
+            UnifyTypes(leftVar, rightVar);
+        }
+
+        if (op == PLUS || op == MINUS || op == MULT || op == DIV)
+        {
+            if (!leftVar.empty())
+            {
+                varName = leftVar;
             }
-            scopeStack.pop_back();
-        } else {
-            cout << "Syntax Error" << endl;
-            exit(1);
-        }
-    } else {
-        cout << "Syntax Error" << endl;
-        exit(1);
-    }
-}
-
-void ParseScopeContent() {
-    ParseVisibilitySections();
-    ParseScopeList();
-    ParseAssignmentList();
-}
-
-void ParseVisibilitySections() {
-    token = lexer.GetToken();
-    while (token.token_type == PUBLIC || token.token_type == PRIVATE) {
-        lexer.UngetToken(token);
-        ParseVisibilitySection();
-        token = lexer.GetToken();
-    }
-    lexer.UngetToken(token);
-}
-
-void ParseVisibilitySection() {
-    token = lexer.GetToken();
-    string access_type;
-    if (token.token_type == PUBLIC) {
-        access_type = "public";
-    } else if (token.token_type == PRIVATE) {
-        access_type = "private";
-    } else {
-        cout << "Syntax Error" << endl;
-        exit(1);
-    }
-
-    token = lexer.GetToken();
-    if (token.token_type == COLON) {
-        if (!ParseVariableListWithVisibility(access_type)) {
-            cout << "Syntax Error" << endl;
-            exit(1);
-        }
-        token = lexer.GetToken();
-        if (token.token_type != SEMICOLON) {
-            cout << "Syntax Error" << endl;
-            exit(1);
-        }
-    } else {
-        cout << "Syntax Error" << endl;
-        exit(1);
-    }
-}
-
-bool ParseVariableListWithVisibility(string access_type) {
-    token = lexer.GetToken();
-    if (token.token_type == ID) {
-        // add to symbol table
-        VariableInfo variableInfo;
-        variableInfo.name = token.lexeme;
-        variableInfo.scope = (scopeStack.empty() ? "::" : scopeStack.back());
-        variableInfo.access_type = access_type;
-        symbolTable.push_back(variableInfo);
-        token = lexer.GetToken();
-
-        if (token.token_type == COMMA) {
-            return ParseVariableListWithVisibility(access_type);
-        } else {
-            lexer.UngetToken(token);
-            return true;
-        }
-    } else {
-        lexer.UngetToken(token);
-        return false;
-    }
-}
-
-void ParseAssignmentList() {
-    while (true) {
-        token = lexer.GetToken();
-        if (token.token_type == ID) {
-            Token nextToken = lexer.GetToken();
-            if (nextToken.token_type == EQUAL) {
-                lexer.UngetToken(nextToken);
-                lexer.UngetToken(token);
-                ParseAssignment();
-            } else {
-                lexer.UngetToken(nextToken);
-                lexer.UngetToken(token);
-                break; // not an assignment
+            else if (!rightVar.empty())
+            {
+                varName = rightVar;
             }
-        } else {
-            lexer.UngetToken(token);
-            break; // out of assignments
+            else
+            {
+                varName = "";
+            }
+
+            if (!varName.empty())
+            {
+                if (!leftVar.empty())
+                    UnifyTypes(varName, leftVar);
+                if (!rightVar.empty())
+                    UnifyTypes(varName, rightVar);
+            }
+
+            return leftType != TYPE_UNKNOWN ? leftType : rightType;
+        }
+        else
+        {
+            varName = "";
+            return TYPE_BOOL;
         }
     }
-}
-
-void ParseAssignment() {
-    token = lexer.GetToken();
-    if (token.token_type == ID) {
-        string lhs = token.lexeme;
+    else if (token.token_type == NOT)
+    {
+        int op_line_no = token.line_no;
         token = lexer.GetToken();
-        if (token.token_type == EQUAL) {
-            token = lexer.GetToken();
-            if (token.token_type == ID) {
-                string rhs = token.lexeme;
-                token = lexer.GetToken();
-                if (token.token_type == SEMICOLON) {
-                    string resolved_lhs = ResolveVariable(lhs);
-                    string resolved_rhs = ResolveVariable(rhs);
-                    assignments.push_back(resolved_lhs + " = " + resolved_rhs);
-                } else {
-                    cout << "Syntax Error" << endl;
-                    exit(1);
-                }
-            } else {
-                cout << "Syntax Error" << endl;
-                exit(1);
-            }
-        } else {
-            cout << "Syntax Error" << endl;
-            exit(1);
+        string exprVar;
+        int expr_line_no;
+        SimpleType exprType = ParseExpression(exprVar, expr_line_no);
+
+        // C3
+        if (exprType != TYPE_BOOL && exprType != TYPE_UNKNOWN)
+        {
+            ReportTypeError(op_line_no, "C3");
         }
-    } else {
-        cout << "Syntax Error" << endl;
-        exit(1);
+        else if (exprType == TYPE_UNKNOWN && !exprVar.empty())
+        {
+            UpdateType(exprVar, TYPE_BOOL);
+        }
+        varName = "";
+        return TYPE_BOOL;
+    }
+    else
+    {
+        SyntaxError();
+        return TYPE_UNKNOWN;
     }
 }
 
-string ResolveVariable(string variableName) {
-    // start on current scope, then check the rest
-    for (auto scopeIt = scopeStack.rbegin(); scopeIt != scopeStack.rend(); ++scopeIt) {
-        string scopeName = *scopeIt;
-
-        // search in scope
-        for (VariableInfo &variableInfo : symbolTable) {
-            if (variableInfo.name == variableName && variableInfo.scope == scopeName) {
-                if (scopeIt == scopeStack.rbegin()) {
-                    // can access in current scope
-                    return scopeName + "." + variableName;
-                } else if (variableInfo.access_type == "public") {
-                    // can access variable in outer scope, public
-                    return scopeName + "." + variableName;
-                } else {
-                    // cant access variable from outer scope, private
-                    // continue searching outer scopes
-                    break;
-                }
-            }
+SimpleType Parser::ParsePrimary(string &varName, int &primary_line_no)
+{
+    primary_line_no = token.line_no;
+    if (token.token_type == ID)
+    {
+        varName = token.lexeme;
+        if (symbolTable.find(varName) == symbolTable.end())
+        {
+            symbolTable[varName].type = TYPE_UNKNOWN;
+            symbolTable[varName].equalVars.insert(varName);
+            varOrder.push_back(varName);
         }
+        token = lexer.GetToken();
+        return symbolTable[varName].type;
     }
-
-    // search global scope
-    for (VariableInfo &variableInfo : symbolTable) {
-        if (variableInfo.name == variableName && variableInfo.scope == "::") {
-            return "::" + variableName;
-        }
+    else if (token.token_type == NUM)
+    {
+        varName = "";
+        token = lexer.GetToken();
+        return TYPE_INT;
     }
-
-    // cant find variable
-    return "?." + variableName;
+    else if (token.token_type == REALNUM)
+    {
+        varName = "";
+        token = lexer.GetToken();
+        return TYPE_REAL;
+    }
+    else if (token.token_type == TRUE || token.token_type == FALSE)
+    {
+        varName = "";
+        token = lexer.GetToken();
+        return TYPE_BOOL;
+    }
+    else
+    {
+        SyntaxError();
+        return TYPE_UNKNOWN;
+    }
 }
 
-int main() {
-    ParseProgram();
-    for (const string &assignment : assignments) {
-        cout << assignment << endl;
+void Parser::EnforceType(SimpleType leftType, SimpleType rightType, int line_no, string constraint, string leftVar, string rightVar) {
+    if (leftType != TYPE_UNKNOWN && rightType != TYPE_UNKNOWN && leftType != rightType) {
+        ReportTypeError(line_no, constraint);
+    } else if (leftType == TYPE_UNKNOWN && rightType != TYPE_UNKNOWN && !leftVar.empty()) {
+        UpdateType(leftVar, rightType);
+    } else if (rightType == TYPE_UNKNOWN && leftType != TYPE_UNKNOWN && !rightVar.empty()) {
+        UpdateType(rightVar, leftType);
     }
+}
+
+void Parser::UnifyTypes(string var1, string var2)
+{
+    if (var1.empty() || var2.empty())
+    {
+        return;
+    }
+
+    // handle sets
+    set<string> &vars1 = symbolTable[var1].equalVars;
+    set<string> &vars2 = symbolTable[var2].equalVars;
+    vars1.insert(vars2.begin(), vars2.end());
+
+    // update equalVars
+    for (const string &var : vars1)
+    {
+        symbolTable[var].equalVars = vars1;
+    }
+
+    // handle types
+    SimpleType type1 = symbolTable[var1].type;
+    SimpleType type2 = symbolTable[var2].type;
+
+    if (type1 == TYPE_UNKNOWN && type2 != TYPE_UNKNOWN)
+    {
+        UpdateType(var1, type2);
+    }
+    else if (type2 == TYPE_UNKNOWN && type1 != TYPE_UNKNOWN)
+    {
+        UpdateType(var2, type1);
+    }
+    else if (type1 != TYPE_UNKNOWN && type2 != TYPE_UNKNOWN && type1 != type2)
+    {
+        // types conflicts
+    }
+}
+
+void Parser::UpdateType(string varName, SimpleType type)
+{
+    if (symbolTable[varName].type == type)
+    {
+        return;
+    }
+    symbolTable[varName].type = type;
+    for (string v : symbolTable[varName].equalVars)
+    {
+        if (symbolTable[v].type != type)
+        {
+            symbolTable[v].type = type;
+            UpdateType(v, type);
+        }
+    }
+}
+
+int main()
+{
+    Parser parser;
+    parser.ParseProgram();
     return 0;
 }
